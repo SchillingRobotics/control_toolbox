@@ -113,9 +113,10 @@ public:
    */
   struct Gains
   {
-    // Optional constructor for passing in values without antiwindup
+    // Optional constructor for passing in values without antiwindup/save i-term
     Gains(double p, double i, double d, double i_max, double i_min)
-    : p_gain_(p), i_gain_(i), d_gain_(d), i_max_(i_max), i_min_(i_min), antiwindup_(false)
+    : p_gain_(p), i_gain_(i), d_gain_(d), i_max_(i_max), i_min_(i_min), antiwindup_(false),
+      save_iterm_(false)
     {
     }
     // Optional constructor for passing in values
@@ -123,8 +124,15 @@ public:
     : p_gain_(p), i_gain_(i), d_gain_(d), i_max_(i_max), i_min_(i_min), antiwindup_(antiwindup)
     {
     }
+    // Optional constructor for passing in values
+    Gains(double p, double i, double d, double i_max, double i_min, bool antiwindup,
+      bool save_iterm) : p_gain_(p), i_gain_(i), d_gain_(d), i_max_(i_max), i_min_(i_min),
+      antiwindup_(antiwindup), save_iterm_(save_iterm)
+    {
+    }
     // Default constructor
-    Gains() : p_gain_(0.0), i_gain_(0.0), d_gain_(0.0), i_max_(0.0), i_min_(0.0), antiwindup_(false)
+    Gains() : p_gain_(0.0), i_gain_(0.0), d_gain_(0.0), i_max_(0.0), i_min_(0.0),
+      antiwindup_(false), save_iterm_(false)
     {
     }
     double p_gain_;   /**< Proportional gain. */
@@ -133,6 +141,7 @@ public:
     double i_max_;    /**< Maximum allowable integral term. */
     double i_min_;    /**< Minimum allowable integral term. */
     bool antiwindup_; /**< Antiwindup. */
+    bool save_iterm_; /**< Save integral term. */
   };
 
   /*!
@@ -148,7 +157,7 @@ public:
    */
   Pid(
     double p = 0.0, double i = 0.0, double d = 0.0, double i_max = 0.0, double i_min = -0.0,
-    bool antiwindup = false);
+    bool antiwindup = false, bool save_iterm = false);
 
   /**
    * \brief Copy constructor required for preventing mutexes from being copied
@@ -171,12 +180,23 @@ public:
    * \param i_max The max integral windup.
    * \param i_min The min integral windup.
    */
-  void initPid(double p, double i, double d, double i_max, double i_min, bool antiwindup = false);
+  void initPid(double p, double i, double d, double i_max, double i_min, bool antiwindup = false,
+    bool save_iterm = false);
 
   /*!
    * \brief Reset the state of this PID controller
    */
   void reset();
+
+  /*!
+   * \brief Save the integrator output of this controller
+   */
+  void save_iterm();
+
+  /*!
+   * \brief Clear the saved the integrator output of this controller
+   */
+  void clear_saved_iterm();
 
   /*!
    * \brief Get PID gains for the controller.
@@ -189,6 +209,9 @@ public:
   void getGains(double & p, double & i, double & d, double & i_max, double & i_min);
   void getGains(
     double & p, double & i, double & d, double & i_max, double & i_min, bool & antiwindup);
+  void getGains(
+    double & p, double & i, double & d, double & i_max, double & i_min, bool & antiwindup,
+    bool & save_iterm);
 
   /*!
    * \brief Get PID gains for the controller.
@@ -204,7 +227,8 @@ public:
    * \param i_max The max integral windup.
    * \param i_min The min integral windup.
    */
-  void setGains(double p, double i, double d, double i_max, double i_min, bool antiwindup = false);
+  void setGains(double p, double i, double d, double i_max, double i_min, bool antiwindup = false,
+    bool save_iterm = false);
 
   /*!
    * \brief Set PID gains for the controller.
@@ -279,14 +303,22 @@ public:
     return *this;
   }
 
+  /*!
+   * \brief Return saved integral term
+   */
+  double getSavedITerm() {return i_term_saved_; }
+
 protected:
   // Store the PID gains in a realtime buffer to allow dynamic reconfigure to update it without
   // blocking the realtime update loop
   realtime_tools::RealtimeBuffer<Gains> gains_buffer_;
+  double min_i_term_ = 0.01;  // Minimum value for saving integral term
 
   double p_error_last_; /**< _Save position state for derivative state calculation. */
   double p_error_;      /**< Position error. */
   double i_error_;      /**< Integral of position error. */
+  double i_term_saved_; /**< Retained integral output */
+  double i_term_last_;  /**< Last integrator term output */
   double d_error_;      /**< Derivative of position error. */
   double cmd_;          /**< Command to send. */
   double error_dot_;    /**< Derivative error */
