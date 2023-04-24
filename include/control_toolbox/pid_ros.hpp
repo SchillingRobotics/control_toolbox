@@ -98,8 +98,10 @@ public:
    * \param i_max The max integral windup.
    * \param i_min The min integral windup.
    * \param antiwindup antiwindup.
+   * \param save_iterm save integrator output between resets.
    */
-  void initPid(double p, double i, double d, double i_max, double i_min, bool antiwindup);
+  void initPid(double p, double i, double d, double i_max, double i_min, bool antiwindup,
+    bool save_iterm = false);
 
   /*!
    * \brief Initialize the PID controller based on already set parameters
@@ -151,8 +153,10 @@ public:
    * \param i_max The max integral windup.
    * \param i_min The min integral windup.
    * \param antiwindup antiwindup.
+   * \param save_iterm save integrator output between resets.
    */
-  void setGains(double p, double i, double d, double i_max, double i_min, bool antiwindup = false);
+  void setGains(double p, double i, double d, double i_max, double i_min, bool antiwindup = false,
+    bool save_iterm = false);
 
   /*!
    * \brief Set PID gains for the controller.
