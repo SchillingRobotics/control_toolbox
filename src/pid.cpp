@@ -49,9 +49,10 @@ namespace control_toolbox
 Pid::Pid(double p, double i, double d, double i_max, double i_min, bool antiwindup, bool save_iterm)
 : gains_buffer_()
 {
+  if (i_min > i_max) {
+    throw std::invalid_argument("received i_min > i_max");
+  }
   setGains(p, i, d, i_max, i_min, antiwindup, save_iterm);
-
-  // Initialize saved i-term values
   clear_saved_iterm();
 
   reset();
@@ -59,7 +60,7 @@ Pid::Pid(double p, double i, double d, double i_max, double i_min, bool antiwind
 
 Pid::Pid(const Pid & source)
 {
-  // Copy the realtime buffer to then new PID class
+  // Copy the realtime buffer to the new PID class
   gains_buffer_ = source.gains_buffer_;
 
   // Initialize saved i-term values
@@ -134,7 +135,14 @@ void Pid::setGains(double p, double i, double d, double i_max, double i_min, boo
   setGains(gains);
 }
 
-void Pid::setGains(const Gains & gains) { gains_buffer_.writeFromNonRT(gains); }
+void Pid::setGains(const Gains & gains)
+{
+  if (gains.i_min_ > gains.i_max_) {
+    std::cout << "received i_min > i_max, skip new gains\n";
+  } else {
+    gains_buffer_.writeFromNonRT(gains);
+  }
+}
 
 double Pid::computeCommand(double error, uint64_t dt)
 {
