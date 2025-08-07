@@ -145,10 +145,10 @@ public:
     }
     if (type != LEGACY && (std::isfinite(i_min) || std::isfinite(i_max)))
     {
-      std::cout << "Warning: The i_min and i_max are only valid for the deprecated LEGACY "
-                   "antiwindup strategy. Please use the AntiWindupStrategy::set_type() method to "
-                   "set the type of antiwindup strategy you want to use."
-                << std::endl;
+      // std::cout << "Warning: The i_min and i_max are only valid for the deprecated LEGACY "
+      //              "antiwindup strategy. Please use the AntiWindupStrategy::set_type() method to "
+      //              "set the type of antiwindup strategy you want to use."
+      //           << std::endl;
     }
     if (
       type != NONE && type != UNDEFINED && type != LEGACY && type != BACK_CALCULATION &&
@@ -767,6 +767,12 @@ public:
    * \brief Return current command for this PID controller
    */
   double get_current_cmd();
+
+  /*!
+   * \brief Set integral term for this PID controller
+   * \param iterm integral term to set
+   */
+  void set_integral_term(double iterm);
 
   /*!
    * \brief Return PID error terms for the controller.

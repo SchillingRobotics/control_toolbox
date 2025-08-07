@@ -431,6 +431,8 @@ void Pid::set_current_cmd(double cmd) { cmd_ = cmd; }
 
 double Pid::get_current_cmd() { return cmd_; }
 
+void Pid::set_integral_term(double iterm) { i_term_ = iterm; }
+
 void Pid::get_current_pid_errors(double & pe, double & ie, double & de)
 {
   pe = p_error_;

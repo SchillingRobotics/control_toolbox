@@ -330,6 +330,12 @@ public:
   double get_current_cmd();
 
   /*!
+   * \brief Set integral term for this PID controller
+   * \param iterm integral term to set
+   */
+  void set_integral_term(double iterm);
+
+  /*!
    * \brief Return PID state publisher
    * \return shared_ptr to the PID state publisher
    */
