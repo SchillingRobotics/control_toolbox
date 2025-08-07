@@ -521,6 +521,8 @@ void PidROS::set_current_cmd(double cmd) { pid_.set_current_cmd(cmd); }
 
 double PidROS::get_current_cmd() { return pid_.get_current_cmd(); }
 
+void PidROS::set_integral_term(double iterm) { pid_.set_integral_term(iterm); }
+
 void PidROS::get_current_pid_errors(double & pe, double & ie, double & de)
 {
   double _pe, _ie, _de;

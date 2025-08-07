@@ -769,6 +769,12 @@ public:
   double get_current_cmd();
 
   /*!
+   * \brief Set integral term for this PID controller
+   * \param iterm integral term to set
+   */
+  void set_integral_term(double iterm);
+
+  /*!
    * \brief Return PID error terms for the controller.
    * \param pe  The proportional error.
    * \param ie  The weighted integral error.
