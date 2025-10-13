@@ -40,69 +40,7 @@
 
 namespace control_toolbox
 {
-constexpr double UMAX_INFINITY = std::numeric_limits<double>::infinity();
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-PidROS::PidROS(
-  rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base,
-  rclcpp::node_interfaces::NodeLoggingInterface::SharedPtr node_logging,
-  rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_params,
-  rclcpp::node_interfaces::NodeTopicsInterface::SharedPtr topics_interface, std::string prefix,
-  bool prefix_is_for_params)
-: node_base_(node_base),
-  node_logging_(node_logging),
-  node_params_(node_params),
-  topics_interface_(topics_interface)
-{
-  // note: deprecation on templated constructor does not show up
-  RCLCPP_WARN(
-    node_logging->get_logger(),
-    "PidROS constructor with node and prefix is deprecated, use overloads with explicit "
-    "prefixes for params and topics");
-
-  if (prefix_is_for_params)
-  {
-    param_prefix_ = prefix;
-    // If it starts with a "~", remove it
-    if (param_prefix_.compare(0, 1, "~") == 0)
-    {
-      param_prefix_.erase(0, 1);
-    }
-    // If it starts with a "/" or a "~/", remove those as well
-    if (param_prefix_.compare(0, 1, "/") == 0)
-    {
-      param_prefix_.erase(0, 1);
-    }
-    // Add a trailing "."
-    if (!param_prefix_.empty() && param_prefix_.back() != '.')
-    {
-      param_prefix_.append(".");
-    }
-
-    topic_prefix_ = prefix;
-    // Replace parameter separator from "." to "/" in topics
-    std::replace(topic_prefix_.begin(), topic_prefix_.end(), '.', '/');
-    // Add a trailing "/"
-    if (!topic_prefix_.empty() && topic_prefix_.back() != '/')
-    {
-      topic_prefix_.append("/");
-    }
-    // Add global namespace if none is defined
-    if (topic_prefix_.compare(0, 1, "~") != 0 && topic_prefix_.compare(0, 1, "/") != 0)
-    {
-      topic_prefix_ = "/" + topic_prefix_;
-    }
-  }
-  else
-  {
-    set_prefixes(prefix);
-  }
-
-  state_pub_ = rclcpp::create_publisher<control_msgs::msg::PidState>(
-    topics_interface_, topic_prefix_ + "pid_state", rclcpp::SensorDataQoS());
-  rt_state_pub_.reset(
-    new realtime_tools::RealtimePublisher<control_msgs::msg::PidState>(state_pub_));
-}
+constexpr double MAX_INFINITY = std::numeric_limits<double>::infinity();
 
 PidROS::PidROS(
   rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base,
@@ -134,38 +72,6 @@ PidROS::PidROS(
       topics_interface_, topic_prefix_ + "pid_state", rclcpp::SensorDataQoS());
     rt_state_pub_.reset(
       new realtime_tools::RealtimePublisher<control_msgs::msg::PidState>(state_pub_));
-  }
-}
-#pragma GCC diagnostic pop
-
-void PidROS::set_prefixes(const std::string & topic_prefix)
-{
-  param_prefix_ = topic_prefix;
-  // If it starts with a "~", remove it
-  if (param_prefix_.compare(0, 1, "~") == 0)
-  {
-    param_prefix_.erase(0, 1);
-  }
-  // If it starts with a "/" or a "~/", remove those as well
-  if (param_prefix_.compare(0, 1, "/") == 0)
-  {
-    param_prefix_.erase(0, 1);
-  }
-  // Replace namespacing separator from "/" to "." in parameters
-  std::replace(param_prefix_.begin(), param_prefix_.end(), '/', '.');
-  // Add a trailing "."
-  if (!param_prefix_.empty() && param_prefix_.back() != '.')
-  {
-    param_prefix_.append(".");
-  }
-
-  topic_prefix_ = topic_prefix;
-  // Replace parameter separator from "." to "/" in topics
-  std::replace(topic_prefix_.begin(), topic_prefix_.end(), '.', '/');
-  // Add a trailing "/"
-  if (!topic_prefix_.empty() && topic_prefix_.back() != '/')
-  {
-    topic_prefix_.append("/");
   }
 }
 
@@ -255,13 +161,13 @@ bool PidROS::get_string_param(const std::string & param_name, std::string & valu
 bool PidROS::initialize_from_ros_parameters()
 {
   double p, i, d, i_max, i_min, u_max, u_min, tracking_time_constant, error_deadband;
-  p = i = d = i_max = i_min = tracking_time_constant = std::numeric_limits<double>::quiet_NaN();
+  p = i = d = tracking_time_constant = std::numeric_limits<double>::quiet_NaN();
   error_deadband = std::numeric_limits<double>::epsilon();
-  u_max = UMAX_INFINITY;
-  u_min = -UMAX_INFINITY;
-  bool antiwindup = false;
-  bool saturation = false;
-  std::string antiwindup_strat_str = "legacy";
+  i_max = MAX_INFINITY;
+  i_min = -MAX_INFINITY;
+  u_max = MAX_INFINITY;
+  u_min = -MAX_INFINITY;
+  std::string antiwindup_strat_str = "none";
   bool all_params_available = true;
 
   all_params_available &= get_double_param(param_prefix_ + "p", p);
@@ -276,26 +182,28 @@ bool PidROS::initialize_from_ros_parameters()
   all_params_available &=
     get_double_param(param_prefix_ + "tracking_time_constant", tracking_time_constant);
 
-  get_boolean_param(param_prefix_ + "antiwindup", antiwindup);
+  bool saturation = std::isfinite(u_max) || std::isfinite(u_min);
+  get_boolean_param(param_prefix_ + "saturation", saturation);
+  if (!saturation)
+  {
+    u_max = MAX_INFINITY;
+    u_min = -MAX_INFINITY;
+  }
   get_string_param(param_prefix_ + "antiwindup_strategy", antiwindup_strat_str);
   declare_param(param_prefix_ + "save_i_term", rclcpp::ParameterValue(false));
+  declare_param(
+    param_prefix_ + "activate_state_publisher", rclcpp::ParameterValue(rt_state_pub_ != nullptr));
 
   if (all_params_available)
   {
     set_parameter_event_callback();
   }
 
-  RCLCPP_WARN_EXPRESSION(
-    node_logging_->get_logger(), antiwindup_strat_str == "legacy",
-    "Using the legacy anti-windup technique is deprecated. This option will be removed by the ROS "
-    "2 Kilted Kaiju release.");
-
   AntiWindupStrategy antiwindup_strat;
   antiwindup_strat.set_type(antiwindup_strat_str);
   antiwindup_strat.i_max = i_max;
   antiwindup_strat.i_min = i_min;
   antiwindup_strat.tracking_time_constant = tracking_time_constant;
-  antiwindup_strat.legacy_antiwindup = antiwindup;
   antiwindup_strat.error_deadband = error_deadband;
 
   try
@@ -322,34 +230,6 @@ void PidROS::declare_param(const std::string & param_name, rclcpp::ParameterValu
   {
     node_params_->declare_parameter(param_name, param_value);
   }
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-bool PidROS::initialize_from_args(
-  double p, double i, double d, double i_max, double i_min, bool antiwindup)
-{
-  AntiWindupStrategy antiwindup_strat;
-  antiwindup_strat.type = AntiWindupStrategy::LEGACY;
-  antiwindup_strat.i_max = i_max;
-  antiwindup_strat.i_min = i_min;
-  antiwindup_strat.legacy_antiwindup = antiwindup;
-
-  return initialize_from_args(p, i, d, UMAX_INFINITY, -UMAX_INFINITY, antiwindup_strat, false);
-}
-#pragma GCC diagnostic pop
-
-bool PidROS::initialize_from_args(
-  double p, double i, double d, double i_max, double i_min, bool antiwindup, bool save_i_term)
-{
-  AntiWindupStrategy antiwindup_strat;
-  antiwindup_strat.type = AntiWindupStrategy::LEGACY;
-  antiwindup_strat.i_max = i_max;
-  antiwindup_strat.i_min = i_min;
-  antiwindup_strat.legacy_antiwindup = antiwindup;
-
-  return initialize_from_args(
-    p, i, d, UMAX_INFINITY, -UMAX_INFINITY, antiwindup_strat, save_i_term);
 }
 
 bool PidROS::initialize_from_args(
@@ -380,14 +260,13 @@ bool PidROS::initialize_from_args(
       declare_param(param_prefix_ + "u_clamp_max", rclcpp::ParameterValue(gains.u_max_));
       declare_param(param_prefix_ + "u_clamp_min", rclcpp::ParameterValue(gains.u_min_));
       declare_param(
-        param_prefix_ + "antiwindup",
-        rclcpp::ParameterValue(gains.antiwindup_strat_.legacy_antiwindup));
-      declare_param(
         param_prefix_ + "tracking_time_constant",
         rclcpp::ParameterValue(antiwindup_strat.tracking_time_constant));
       declare_param(
         param_prefix_ + "error_deadband", rclcpp::ParameterValue(antiwindup_strat.error_deadband));
-      declare_param(param_prefix_ + "saturation", rclcpp::ParameterValue(true));
+      declare_param(
+        param_prefix_ + "saturation",
+        rclcpp::ParameterValue(std::isfinite(gains.u_max_) || std::isfinite(gains.u_min_)));
       declare_param(
         param_prefix_ + "antiwindup_strategy",
         rclcpp::ParameterValue(gains.antiwindup_strat_.to_string()));
@@ -438,16 +317,6 @@ double PidROS::compute_command(double error, double error_dot, const rclcpp::Dur
 
 Pid::Gains PidROS::get_gains() { return pid_.get_gains(); }
 
-bool PidROS::set_gains(double p, double i, double d, double i_max, double i_min, bool antiwindup)
-{
-  AntiWindupStrategy antiwindup_strat;
-  antiwindup_strat.type = AntiWindupStrategy::LEGACY;
-  antiwindup_strat.i_max = i_max;
-  antiwindup_strat.i_min = i_min;
-  antiwindup_strat.legacy_antiwindup = antiwindup;
-  return set_gains(p, i, d, UMAX_INFINITY, -UMAX_INFINITY, antiwindup_strat);
-}
-
 bool PidROS::set_gains(
   double p, double i, double d, double u_max, double u_min,
   const AntiWindupStrategy & antiwindup_strat)
@@ -482,7 +351,6 @@ bool PidROS::set_gains(const Pid::Gains & gains)
          rclcpp::Parameter(
            param_prefix_ + "tracking_time_constant",
            gains.antiwindup_strat_.tracking_time_constant),
-         rclcpp::Parameter(param_prefix_ + "antiwindup", gains.antiwindup_strat_.legacy_antiwindup),
          rclcpp::Parameter(
            param_prefix_ + "error_deadband", gains.antiwindup_strat_.error_deadband),
          rclcpp::Parameter(param_prefix_ + "saturation", true),
@@ -550,7 +418,6 @@ void PidROS::print_values()
       << "  U_Max:                  " << gains.u_max_ << "\n"
       << "  U_Min:                  " << gains.u_min_ << "\n"
       << "  Tracking_Time_Constant: " << gains.antiwindup_strat_.tracking_time_constant << "\n"
-      << "  Antiwindup:             " << gains.antiwindup_strat_.legacy_antiwindup << "\n"
       << "  Antiwindup_Strategy:    " << gains.antiwindup_strat_.to_string() << "\n"
       << "\n"
       << "  P Error:      " << p_error << "\n"
@@ -599,8 +466,8 @@ void PidROS::set_parameter_event_callback()
             RCLCPP_WARN(
               node_logging_->get_logger(),
               "Saturation is set to false, Changing the u_min and u_max to -inf and inf");
-            gains.u_min_ = -UMAX_INFINITY;
-            gains.u_max_ = UMAX_INFINITY;
+            gains.u_max_ = MAX_INFINITY;
+            gains.u_min_ = -MAX_INFINITY;
           }
           else
           {
@@ -648,7 +515,7 @@ void PidROS::set_parameter_event_callback()
         }
         else if (param_name == param_prefix_ + "u_clamp_max")
         {
-          gains.u_max_ = saturation ? parameter.get_value<double>() : UMAX_INFINITY;
+          gains.u_max_ = saturation ? parameter.get_value<double>() : MAX_INFINITY;
           RCLCPP_WARN_EXPRESSION(
             node_logging_->get_logger(), !saturation,
             "Saturation is set to false, Changing the u_clamp_max inf");
@@ -656,7 +523,7 @@ void PidROS::set_parameter_event_callback()
         }
         else if (param_name == param_prefix_ + "u_clamp_min")
         {
-          gains.u_min_ = saturation ? parameter.get_value<double>() : -UMAX_INFINITY;
+          gains.u_min_ = saturation ? parameter.get_value<double>() : -MAX_INFINITY;
           RCLCPP_WARN_EXPRESSION(
             node_logging_->get_logger(), !saturation,
             "Saturation is set to false, Changing the u_clamp_min -inf");
@@ -665,11 +532,6 @@ void PidROS::set_parameter_event_callback()
         else if (param_name == param_prefix_ + "tracking_time_constant")
         {
           gains.antiwindup_strat_.tracking_time_constant = parameter.get_value<double>();
-          changed = true;
-        }
-        else if (param_name == param_prefix_ + "antiwindup")
-        {
-          gains.antiwindup_strat_.legacy_antiwindup = parameter.get_value<bool>();
           changed = true;
         }
         else if (param_name == param_prefix_ + "error_deadband")
