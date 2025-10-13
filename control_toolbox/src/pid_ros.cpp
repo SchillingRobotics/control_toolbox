@@ -177,7 +177,6 @@ bool PidROS::initialize_from_ros_parameters()
   all_params_available &= get_double_param(param_prefix_ + "i_clamp_min", i_min);
   all_params_available &= get_double_param(param_prefix_ + "u_clamp_max", u_max);
   all_params_available &= get_double_param(param_prefix_ + "u_clamp_min", u_min);
-  get_boolean_param(param_prefix_ + "saturation", saturation);
   all_params_available &= get_double_param(param_prefix_ + "error_deadband", error_deadband);
   all_params_available &=
     get_double_param(param_prefix_ + "tracking_time_constant", tracking_time_constant);
